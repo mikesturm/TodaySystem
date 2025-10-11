@@ -8,6 +8,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Load Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Load Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         /* Custom styles for 'The Today System' feel */
         body {
@@ -20,11 +22,11 @@
             border: 1px solid #e0e0e0;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
         }
-        .task-item {
+        .task-item, .goal-item, .project-item {
             cursor: pointer;
             transition: all 0.1s ease-in-out;
         }
-        .task-item:hover {
+        .task-item:hover, .goal-item:hover, .project-item:hover {
             /* Keep hover minimal for index card look */
             background-color: #fefefe !important; 
         }
@@ -67,6 +69,11 @@
         #s3-accordion .task-item.drop-target-after {
             border-bottom: 2px solid #38bdf8; /* sky-400 */
             padding-bottom: 2px;
+        }
+        
+        /* Drop indicator for Goal reordering */
+        #goals-list .goal-item.drop-target-after {
+            border-bottom: 2px solid #8b5cf6; /* violet-500 */
         }
 
         /* Style for the scoring buttons */
@@ -193,11 +200,29 @@
         .autocomplete-item strong {
             color: #8b5cf6; /* Violet-500 */
         }
+
+        /* --- LOADING SPINNER --- */
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: #a78bfa; /* Violet-400 */
+            animation: spin 1s ease-in-out infinite;
+        }
     </style>
 </head>
 <body class="p-4 sm:p-8">
 
-    <div id="app-container" class="max-w-7xl mx-auto">
+    <div id="loading-overlay" class="fixed inset-0 bg-f7f3f0 z-50 flex flex-col items-center justify-center">
+        <div class="spinner"></div>
+        <p class="mt-4 text-lg font-semibold text-gray-600">Loading your system...</p>
+    </div>
+
+    <div id="app-container" class="max-w-7xl mx-auto hidden">
         
         <header class="mb-8">
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center">
@@ -210,25 +235,9 @@
                 </p>
             </div>
             <p class="text-lg text-gray-600 font-semibold mt-2">Daily focus, goal-aligned projects, and scorekeeping.</p>
+            <!-- Error Message Display -->
+            <div id="error-message" class="hidden mt-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg"></div>
         </header>
-
-        <div class="mb-8 card rounded-xl p-4">
-            <h2 class="text-xl font-semibold text-gray-700 mb-3 flex items-center">
-                <span data-lucide="inbox" class="w-5 h-5 mr-2 text-gray-400"></span>
-                Capture New Action
-            </h2>
-            <div class="flex flex-col sm:flex-row gap-2 items-end">
-                <input type="text" id="new-task-input" placeholder="Verb | Noun | Details (e.g., Draft analysis report for Q3)"
-                       class="flex-grow p-3 border border-gray-300 rounded-lg focus:ring-violet-500 focus:border-violet-500 text-gray-700 w-full">
-                <button id="add-task-btn"
-                        class="px-6 py-3 bg-violet-600 text-white font-semibold rounded-lg hover:bg-violet-700 transition duration-150 ease-in-out shadow-lg flex items-center justify-center w-full sm:w-auto disabled:bg-violet-400 disabled:cursor-not-allowed"
-                        disabled>
-                    <span data-lucide="plus" class="w-5 h-5 mr-1"></span>
-                    Add Task
-                </button>
-            </div>
-            <p id="error-message" class="text-red-500 text-sm mt-2 hidden"></p>
-        </div>
 
         <div class="mb-8 card rounded-xl p-0 bg-white index-card">
             
@@ -275,8 +284,19 @@
                     <details class="s3-section bg-white rounded-lg shadow-sm border border-gray-200" open>
                         <summary class="flex justify-between items-center p-3 cursor-pointer text-lg font-semibold text-sky-700">
                             <div class="flex items-center"><span data-lucide="sun" class="w-4 h-4 mr-2"></span> Today/Tomorrow</div>
-                            <span data-lucide="chevron-down" class="chevron w-5 h-5 transition-transform"></span>
+                            <div class="flex items-center space-x-2">
+                                <button class="s3-add-task-btn p-1 rounded-full hover:bg-sky-100" title="Add task to this section" data-target-list="s3-tomorrow">
+                                    <span data-lucide="plus-circle" class="w-5 h-5 text-sky-600"></span>
+                                </button>
+                                <span data-lucide="chevron-down" class="chevron w-5 h-5 transition-transform"></span>
+                            </div>
                         </summary>
+                        <div id="add-form-s3-tomorrow" class="p-2 border-t border-gray-200 hidden">
+                             <div class="relative flex gap-2">
+                                <input type="text" placeholder="Add task (type # to link)" class="s3-new-task-input flex-grow p-2 border border-gray-300 rounded-lg text-sm" data-target-list="s3-tomorrow">
+                                <button class="s3-submit-task-btn px-3 py-1 bg-sky-500 text-white font-semibold rounded-lg hover:bg-sky-600 text-sm" data-target-list="s3-tomorrow">Add</button>
+                            </div>
+                        </div>
                         <div class="p-2">
                             <div id="s3-tomorrow-list" class="task-list space-y-3" data-target="s3-tomorrow">
                                  <p class="text-gray-500 italic text-center text-sm p-2">Tasks for immediate focus.</p>
@@ -286,8 +306,19 @@
                     <details class="s3-section bg-white rounded-lg shadow-sm border border-gray-200" open>
                         <summary class="flex justify-between items-center p-3 cursor-pointer text-lg font-semibold text-sky-700">
                             <div class="flex items-center"><span data-lucide="arrow-right-circle" class="w-4 h-4 mr-2"></span> Next Few Days</div>
-                            <span data-lucide="chevron-down" class="chevron w-5 h-5 transition-transform"></span>
+                             <div class="flex items-center space-x-2">
+                                <button class="s3-add-task-btn p-1 rounded-full hover:bg-sky-100" title="Add task to this section" data-target-list="s3-few-days">
+                                    <span data-lucide="plus-circle" class="w-5 h-5 text-sky-600"></span>
+                                </button>
+                                <span data-lucide="chevron-down" class="chevron w-5 h-5 transition-transform"></span>
+                            </div>
                         </summary>
+                         <div id="add-form-s3-few-days" class="p-2 border-t border-gray-200 hidden">
+                             <div class="relative flex gap-2">
+                                <input type="text" placeholder="Add task (type # to link)" class="s3-new-task-input flex-grow p-2 border border-gray-300 rounded-lg text-sm" data-target-list="s3-few-days">
+                                <button class="s3-submit-task-btn px-3 py-1 bg-sky-500 text-white font-semibold rounded-lg hover:bg-sky-600 text-sm" data-target-list="s3-few-days">Add</button>
+                            </div>
+                        </div>
                         <div class="p-2">
                             <div id="s3-few-days-list" class="task-list space-y-3" data-target="s3-few-days">
                                  <p class="text-gray-500 italic text-center text-sm p-2">What's coming up next.</p>
@@ -297,8 +328,19 @@
                     <details class="s3-section bg-white rounded-lg shadow-sm border border-gray-200" open>
                         <summary class="flex justify-between items-center p-3 cursor-pointer text-lg font-semibold text-sky-700">
                             <div class="flex items-center"><span data-lucide="calendar-days" class="w-4 h-4 mr-2"></span> This Week</div>
-                            <span data-lucide="chevron-down" class="chevron w-5 h-5 transition-transform"></span>
+                             <div class="flex items-center space-x-2">
+                                <button class="s3-add-task-btn p-1 rounded-full hover:bg-sky-100" title="Add task to this section" data-target-list="s3-this-week">
+                                    <span data-lucide="plus-circle" class="w-5 h-5 text-sky-600"></span>
+                                </button>
+                                <span data-lucide="chevron-down" class="chevron w-5 h-5 transition-transform"></span>
+                            </div>
                         </summary>
+                         <div id="add-form-s3-this-week" class="p-2 border-t border-gray-200 hidden">
+                             <div class="relative flex gap-2">
+                                <input type="text" placeholder="Add task (type # to link)" class="s3-new-task-input flex-grow p-2 border border-gray-300 rounded-lg text-sm" data-target-list="s3-this-week">
+                                <button class="s3-submit-task-btn px-3 py-1 bg-sky-500 text-white font-semibold rounded-lg hover:bg-sky-600 text-sm" data-target-list="s3-this-week">Add</button>
+                            </div>
+                        </div>
                         <div class="p-2">
                             <div id="s3-this-week-list" class="task-list space-y-3" data-target="s3-this-week">
                                  <p class="text-gray-500 italic text-center text-sm p-2">Must be done before the weekly review.</p>
@@ -308,8 +350,19 @@
                     <details class="s3-section bg-white rounded-lg shadow-sm border border-gray-200" open>
                         <summary class="flex justify-between items-center p-3 cursor-pointer text-lg font-semibold text-sky-700">
                             <div class="flex items-center"><span data-lucide="fast-forward" class="w-4 h-4 mr-2"></span> Next Week & After</div>
-                            <span data-lucide="chevron-down" class="chevron w-5 h-5 transition-transform"></span>
+                             <div class="flex items-center space-x-2">
+                                <button class="s3-add-task-btn p-1 rounded-full hover:bg-sky-100" title="Add task to this section" data-target-list="s3-later">
+                                    <span data-lucide="plus-circle" class="w-5 h-5 text-sky-600"></span>
+                                </button>
+                                <span data-lucide="chevron-down" class="chevron w-5 h-5 transition-transform"></span>
+                            </div>
                         </summary>
+                         <div id="add-form-s3-later" class="p-2 border-t border-gray-200 hidden">
+                             <div class="relative flex gap-2">
+                                <input type="text" placeholder="Add task (type # to link)" class="s3-new-task-input flex-grow p-2 border border-gray-300 rounded-lg text-sm" data-target-list="s3-later">
+                                <button class="s3-submit-task-btn px-3 py-1 bg-sky-500 text-white font-semibold rounded-lg hover:bg-sky-600 text-sm" data-target-list="s3-later">Add</button>
+                            </div>
+                        </div>
                         <div class="p-2">
                             <div id="s3-later-list" class="task-list space-y-3" data-target="s3-later">
                                  <p class="text-gray-500 italic text-center text-sm p-2">Non-pressing, but on the radar.</p>
@@ -329,6 +382,9 @@
                         <p class="text-sm font-medium text-gray-700">Lifetime Average: <span id="lifetime-score" class="text-purple-600 font-bold text-lg">---</span></p>
                         <p class="text-sm font-medium text-gray-700">Last 7 Days Avg: <span id="weekly-score" class="text-purple-600 font-bold text-lg">---</span></p>
                         <p class="text-sm text-gray-500 italic">Target: 750 (0.750)</p>
+                    </div>
+                    <div class="mt-4">
+                        <canvas id="score-chart" height="120"></canvas>
                     </div>
                 </div>
                 
@@ -350,7 +406,7 @@
                         Projects
                     </h2>
                     <div id="project-input-container" class="relative flex gap-2 mb-4">
-                        <input type="text" id="new-project-input" placeholder="New project (type #G to link a goal)" class="flex-grow p-2 border border-gray-300 rounded-lg">
+                        <input type="text" id="new-project-input" placeholder="New project (type # to link a goal)" class="flex-grow p-2 border border-gray-300 rounded-lg">
                         <button id="add-project-btn" class="px-4 py-2 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600">Add</button>
                     </div>
                     <div id="projects-list" class="space-y-2 max-h-60 overflow-y-auto"></div>
@@ -376,6 +432,7 @@
 
         </div>
         
+        <!-- Score Modal -->
         <div id="score-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 hidden items-center justify-center p-4 z-50">
             <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-lg">
                 <h3 class="text-2xl font-bold text-gray-800 mb-4 flex items-center">
@@ -398,13 +455,35 @@
             </div>
         </div>
 
+        <!-- Generic Confirmation Modal -->
         <div id="app-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 hidden items-center justify-center p-4 z-50">
             <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm">
                 <h3 id="app-modal-title" class="text-xl font-semibold text-gray-800 mb-3">Action Confirmation</h3>
                 <p id="app-modal-message" class="text-gray-600 mb-6">Are you sure you want to proceed?</p>
+                <div id="app-modal-checkbox-container" class="hidden items-center mb-4">
+                    <input id="app-modal-checkbox" type="checkbox" class="h-4 w-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500">
+                    <label id="app-modal-checkbox-label" for="app-modal-checkbox" class="ml-2 block text-sm text-gray-700">Don't show this again</label>
+                </div>
                 <div class="flex justify-end gap-3">
                     <button id="app-modal-cancel-btn" class="px-4 py-2 text-gray-600 rounded-lg hover:bg-gray-100 transition">Cancel</button>
                     <button id="app-modal-confirm-btn" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition">Confirm</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Notes Modal -->
+        <div id="notes-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 hidden items-center justify-center p-4 z-50">
+            <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-2xl flex flex-col" style="height: 70vh;">
+                <h3 id="notes-modal-title" class="text-xl font-bold text-gray-800 mb-4 flex-shrink-0">Notes</h3>
+                <div class="flex-grow min-h-0">
+                    <textarea id="notes-modal-textarea" placeholder="Add your notes here..."
+                              class="w-full h-full p-3 border border-gray-300 rounded-lg focus:ring-violet-500 focus:border-violet-500 resize-none"></textarea>
+                </div>
+                <div class="flex justify-end items-center mt-6 gap-3 flex-shrink-0">
+                    <button id="notes-modal-cancel-btn" class="px-4 py-2 text-gray-600 rounded-lg hover:bg-gray-100 transition">Cancel</button>
+                    <button id="notes-modal-save-btn" class="px-6 py-2 bg-violet-600 text-white font-semibold rounded-lg hover:bg-violet-700 transition">
+                        Save Notes
+                    </button>
                 </div>
             </div>
         </div>
@@ -444,31 +523,59 @@
         const GOALS_COLLECTION = 'goals';
         const PROJECTS_COLLECTION = 'projects';
         const METADATA_COLLECTION = 'metadata';
+        const SETTINGS_COLLECTION = 'settings';
         
         const TODAY_TASK_LIMIT = 5; 
         
         let allTasks = [], allScores = [], allGoals = [], allProjects = [];
+        let userSettings = { showTaskGoalWarning: true };
         let draggedTaskId = null;
+        let draggedGoalId = null;
+        let scoreChart = null; // Variable to hold the chart instance
 
-        const showModal = (title, message, confirmText = 'Confirm', confirmClass = 'bg-red-600 hover:bg-red-700') => {
+        // --- New Loading State Management ---
+        let hasLoadedTasks = false, hasLoadedScores = false, hasLoadedGoals = false, hasLoadedProjects = false, hasLoadedSettings = false;
+        let initialLoadComplete = false;
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const appContainer = document.getElementById('app-container');
+
+        const showModal = (title, message, options = {}) => {
+            const { 
+                confirmText = 'Confirm', 
+                confirmClass = 'bg-red-600 hover:bg-red-700', 
+                checkboxLabel = null 
+            } = options;
+
             return new Promise(resolve => {
                 const modal = document.getElementById('app-modal');
                 const modalTitle = document.getElementById('app-modal-title');
                 const modalMessage = document.getElementById('app-modal-message');
                 const modalConfirmBtn = document.getElementById('app-modal-confirm-btn');
                 const modalCancelBtn = document.getElementById('app-modal-cancel-btn');
-
-                if (!modal || !modalTitle || !modalMessage || !modalConfirmBtn || !modalCancelBtn) {
-                    console.error("Modal elements not found.");
-                    return resolve(true);
-                }
+                const checkboxContainer = document.getElementById('app-modal-checkbox-container');
+                const checkbox = document.getElementById('app-modal-checkbox');
+                const checkboxLabelEl = document.getElementById('app-modal-checkbox-label');
 
                 modalTitle.textContent = title;
                 modalMessage.textContent = message;
                 modalConfirmBtn.className = `px-4 py-2 text-white rounded-lg transition ${confirmClass}`;
                 modalConfirmBtn.textContent = confirmText;
+
+                if (checkboxLabel) {
+                    checkboxLabelEl.textContent = checkboxLabel;
+                    checkbox.checked = false;
+                    checkboxContainer.classList.remove('hidden');
+                    checkboxContainer.classList.add('flex');
+                } else {
+                    checkboxContainer.classList.add('hidden');
+                    checkboxContainer.classList.remove('flex');
+                }
                 
-                const cleanup = (result) => {
+                const cleanup = (confirmed) => {
+                    const result = {
+                        confirmed,
+                        dontShowAgain: checkboxLabel ? checkbox.checked : false
+                    };
                     modal.classList.add('hidden');
                     modal.classList.remove('flex');
                     modalConfirmBtn.removeEventListener('click', handleConfirm);
@@ -511,7 +618,6 @@
                     if (userId) {
                          if (userInfoP) userInfoP.innerHTML = `User ID: <span class="font-mono text-xs p-1 bg-gray-200 rounded-md">${userId}</span>`;
                          isAuthReady = true;
-                         document.getElementById('add-task-btn').disabled = false;
                          startRealtimeListeners();
                     }
                 });
@@ -522,6 +628,16 @@
         };
         
         const getCollectionRef = (name) => db && userId ? collection(db, `artifacts/${appId}/users/${userId}/${name}`) : null;
+        
+        const updateUserSettings = async (settings) => {
+            if (!db || !userId) return;
+            const settingsRef = doc(db, `artifacts/${appId}/users/${userId}/${SETTINGS_COLLECTION}/userPreferences`);
+            try {
+                await setDoc(settingsRef, settings, { merge: true });
+            } catch (error) {
+                displayError("Could not save settings: " + error.message);
+            }
+        };
 
         const handleDragDropCommit = async (taskId, targetIdentifier) => {
             const draggedTask = allTasks.find(t => t.id === taskId);
@@ -534,12 +650,12 @@
                 if (draggedTask.onTodayCard) return;
                 const currentTodayCount = allTasks.filter(t => t.onTodayCard).length;
                 if (currentTodayCount >= TODAY_TASK_LIMIT) {
-                     const isConfirmed = await showModal('Focus Limit Reached!', `The card is full. Add anyway?`, 'Add Anyway', 'bg-red-500 hover:bg-red-600');
-                     if (!isConfirmed) return;
+                     const result = await showModal('Focus Limit Reached!', `The card is full. Add anyway?`, {confirmText: 'Add Anyway', confirmClass: 'bg-red-500 hover:bg-red-600'});
+                     if (!result.confirmed) return;
                 }
                 updateData.onTodayCard = true;
                 updateData.progress = 'none';
-                const todayTasks = allTasks.filter(t => t.onTodayCard).sort((a, b) => a.createdAt.toDate() - b.createdAt.toDate());
+                const todayTasks = allTasks.filter(t => t.onTodayCard).sort((a, b) => (a.createdAt?.toDate() || 0) - (b.createdAt?.toDate() || 0));
                 let minTimestamp = Timestamp.now().toMillis();
                 if (todayTasks.length > 0) minTimestamp = todayTasks[0].createdAt?.toMillis() || minTimestamp;
                 updateData.createdAt = Timestamp.fromMillis(minTimestamp - 1000);
@@ -554,20 +670,38 @@
             }
         };
 
-        const addTask = async (text) => {
+        const addTask = async (text, status, linkedProjectId, linkedGoalId) => {
             const tasksRef = getCollectionRef(TASKS_COLLECTION);
-            if (!tasksRef) return displayError("App not ready.");
+            if (!tasksRef) {
+                const msg = "App not ready to add task.";
+                displayError(msg);
+                throw new Error(msg);
+            }
             try {
-                await addDoc(tasksRef, { text: text.trim(), status: 's3-tomorrow', onTodayCard: false, progress: 'none', createdAt: serverTimestamp(), userId });
-                document.getElementById('new-task-input').value = '';
-                document.getElementById('new-task-input').focus();
-            } catch (error) { displayError("Failed to add task: " + error.message); }
+                await addDoc(tasksRef, { 
+                    text: text.trim(), 
+                    status: status, 
+                    linkedProjectId,
+                    linkedGoalId,
+                    onTodayCard: false, 
+                    progress: 'none', 
+                    createdAt: serverTimestamp(), 
+                    userId 
+                });
+            } catch (error) {
+                displayError("Failed to add task: " + error.message);
+                throw error; // Re-throw so the caller knows it failed
+            }
         };
 
         const addGoal = async (text) => {
             const goalsRef = getCollectionRef(GOALS_COLLECTION);
             const metadataRef = doc(db, `artifacts/${appId}/users/${userId}/${METADATA_COLLECTION}/goalCounter`);
-            if (!goalsRef) return displayError("App not ready.");
+            if (!goalsRef) {
+                const msg = "App not ready to add goal.";
+                displayError(msg);
+                throw new Error(msg);
+            }
             try {
                 const newGoalId = await runTransaction(db, async (transaction) => {
                     const counterDoc = await transaction.get(metadataRef);
@@ -576,284 +710,1283 @@
                     return newCount;
                 });
                 await addDoc(goalsRef, { text: text.trim(), goalId: newGoalId, fullGoalId: `#G${newGoalId}`, status: 'active', createdAt: serverTimestamp(), userId });
-                document.getElementById('new-goal-input').value = '';
-            } catch (error) { displayError("Failed to add goal: " + error.message); }
+            } catch (error) {
+                displayError("Failed to add goal: " + error.message);
+                throw error; // Re-throw
+            }
         };
         
         const addProject = async (text, linkedGoalId) => {
             const projectsRef = getCollectionRef(PROJECTS_COLLECTION);
-            if (!projectsRef) return displayError("App not ready.");
+            const metadataRef = doc(db, `artifacts/${appId}/users/${userId}/${METADATA_COLLECTION}/projectCounter`);
+            if (!projectsRef) {
+                const msg = "App not ready to add project.";
+                displayError(msg);
+                throw new Error(msg);
+            }
             try {
-                await addDoc(projectsRef, { text: text.trim(), linkedGoalId, status: 'active', createdAt: serverTimestamp(), userId });
-                const input = document.getElementById('new-project-input');
-                input.value = '';
-                input.dataset.linkedGoalId = '';
-            } catch (error) { displayError("Failed to add project: " + error.message); }
+                 const newProjectId = await runTransaction(db, async (transaction) => {
+                    const counterDoc = await transaction.get(metadataRef);
+                    const newCount = (counterDoc.exists() ? counterDoc.data().count : 0) + 1;
+                    transaction.set(metadataRef, { count: newCount });
+                    return newCount;
+                });
+                await addDoc(projectsRef, { 
+                    text: text.trim(), 
+                    linkedGoalId, 
+                    projectId: newProjectId,
+                    fullProjectId: `#P${newProjectId}`,
+                    status: 'active', 
+                    createdAt: serverTimestamp(), 
+                    userId 
+                });
+            } catch (error) {
+                displayError("Failed to add project: " + error.message);
+                throw error; // Re-throw
+            }
         };
         
         const updateGoalStatus = async (id, status) => {
             const docRef = doc(getCollectionRef(GOALS_COLLECTION), id);
-            await updateDoc(docRef, { status });
+            try { await updateDoc(docRef, { status }); } catch (error) { displayError("Failed to update goal status: " + error.message); }
         };
-
+        
         const updateProjectStatus = async (id, status) => {
             const docRef = doc(getCollectionRef(PROJECTS_COLLECTION), id);
-            await updateDoc(docRef, { status });
+            try { await updateDoc(docRef, { status }); } catch (error) { displayError("Failed to update project status: " + error.message); }
         };
         
-        const reorderTaskTimestamps = async (draggedId, targetIndex) => { /* ... unchanged ... */ };
-        const reorderS3Tasks = async (draggedId, targetIndex, status) => { /* ... unchanged ... */ };
-        const updateTaskProgress = async (taskId, newProgress) => { /* ... unchanged ... */ };
-        const deleteTask = async (taskId) => { /* ... unchanged ... */ };
-        const saveDailyScore = async (scoreData, todayTasks) => { /* ... unchanged ... */ };
-        const clearCompletedTasks = async (completedTasks) => { /* ... unchanged ... */ };
-        const calculatePoints = (todayTasks) => { /* ... unchanged ... */ };
+        const updateGoalText = async (id, text) => {
+            const docRef = doc(getCollectionRef(GOALS_COLLECTION), id);
+            try { await updateDoc(docRef, { text }); } catch (error) { displayError("Failed to update goal: " + error.message); }
+        };
 
-        const createItemElement = (item, type, projects) => {
-            const div = document.createElement('div');
-            div.className = 'flex items-center justify-between p-2 rounded-md hover:bg-gray-50';
-            const textSpan = document.createElement('span');
-            textSpan.className = `flex-grow ${item.status === 'completed' ? 'line-through text-gray-400' : ''}`;
+        const updateProjectText = async (id, text) => {
+            const docRef = doc(getCollectionRef(PROJECTS_COLLECTION), id);
+            try { await updateDoc(docRef, { text }); } catch (error) { displayError("Failed to update project: " + error.message); }
+        };
+
+        // Helper to safely get a timestamp for sorting
+        const getSafeTime = (item) => item?.createdAt?.toDate()?.getTime() || 0;
+
+        const reorderGoals = async (draggedId, targetIndex) => {
+            const goalsRef = getCollectionRef(GOALS_COLLECTION);
+            if (!goalsRef) return displayError("App not ready. Cannot reorder.");
             
-            if (type === 'goal') {
-                const projectCount = projects.filter(p => p.linkedGoalId === item.fullGoalId && p.status === 'active').length;
-                textSpan.innerHTML = `<span class="font-bold text-red-600 mr-2">${item.fullGoalId}</span> ${item.text} <span class="ml-2 text-xs font-semibold bg-gray-200 text-gray-600 rounded-full px-2 py-0.5">${projectCount}</span>`;
+            let activeGoals = allGoals.filter(g => g.status === 'active' || !g.status).sort((a, b) => getSafeTime(b) - getSafeTime(a));
+            
+            const originalIndex = activeGoals.findIndex(g => g.id === draggedId);
+            if (originalIndex === -1) return;
+
+            const draggedGoal = activeGoals.splice(originalIndex, 1)[0];
+            let newIndex = Math.min(Math.max(0, targetIndex), activeGoals.length);
+            activeGoals.splice(newIndex, 0, draggedGoal);
+
+            const batch = writeBatch(db);
+            const startTime = Timestamp.now().toDate().getTime();
+
+            for (let i = 0; i < activeGoals.length; i++) {
+                const goal = activeGoals[i];
+                const newTimestamp = new Date(startTime - (i * 10000));
+                const goalRef = doc(goalsRef, goal.id);
+                batch.update(goalRef, { createdAt: Timestamp.fromDate(newTimestamp) });
+            }
+
+            try {
+                await batch.commit();
+            } catch (error) {
+                console.error("Error reordering goals:", error);
+                displayError("Failed to reorder goals: " + error.message);
+            }
+        };
+
+        const reorderTaskTimestamps = async (draggedId, targetIndex) => {
+            const tasksRef = getCollectionRef(TASKS_COLLECTION);
+            if (!tasksRef) return displayError("App not ready. Cannot reorder.");
+            
+            let todayTasks = allTasks.filter(t => t.onTodayCard).sort((a, b) => getSafeTime(b) - getSafeTime(a));
+            
+            const originalIndex = todayTasks.findIndex(t => t.id === draggedId);
+            if (originalIndex === -1) return;
+
+            const draggedTask = todayTasks.splice(originalIndex, 1)[0];
+            let newIndex = Math.min(Math.max(0, targetIndex), todayTasks.length);
+            todayTasks.splice(newIndex, 0, draggedTask);
+
+            const batch = writeBatch(db);
+            const startTime = Timestamp.now().toDate().getTime();
+
+            for (let i = 0; i < todayTasks.length; i++) {
+                const task = todayTasks[i];
+                const newTimestamp = new Date(startTime - (i * 10000));
+                const taskRef = doc(tasksRef, task.id);
+                batch.update(taskRef, { createdAt: Timestamp.fromDate(newTimestamp) });
+            }
+
+            try {
+                await batch.commit();
+            } catch (error) {
+                console.error("Error reordering tasks:", error);
+                displayError("Failed to reorder tasks: " + error.message);
+            }
+        };
+
+        const reorderS3Tasks = async (draggedId, targetIndex, status) => {
+            const tasksRef = getCollectionRef(TASKS_COLLECTION);
+            if (!tasksRef) return displayError("App not ready. Cannot reorder.");
+            
+            let s3Tasks = allTasks.filter(t => t.status === status).sort((a, b) => getSafeTime(b) - getSafeTime(a));
+            
+            const originalIndex = s3Tasks.findIndex(t => t.id === draggedId);
+            if (originalIndex === -1) return;
+
+            const draggedTask = s3Tasks.splice(originalIndex, 1)[0];
+            let newIndex = Math.min(Math.max(0, targetIndex), s3Tasks.length);
+            s3Tasks.splice(newIndex, 0, draggedTask);
+
+            const TIME_GAP_MS = 10000;
+            const batch = writeBatch(db);
+            const startTime = Timestamp.now().toDate().getTime();
+
+            for (let i = 0; i < s3Tasks.length; i++) {
+                const task = s3Tasks[i];
+                const newTimestamp = new Date(startTime - (i * TIME_GAP_MS));
+                const taskRef = doc(tasksRef, task.id);
+                batch.update(taskRef, { createdAt: Timestamp.fromDate(newTimestamp) });
+            }
+
+            try {
+                await batch.commit();
+            } catch (error) {
+                console.error("Error reordering S3 tasks:", error);
+                displayError("Failed to reorder tasks: " + error.message);
+            }
+        };
+        
+        const updateTaskProgress = async (taskId, newProgress) => {
+            const taskRef = doc(getCollectionRef(TASKS_COLLECTION), taskId);
+            try {
+                await updateDoc(taskRef, { progress: newProgress });
+            } catch (error) {
+                displayError("Failed to update task progress: " + error.message);
+            }
+        };
+
+        const deleteTask = async (taskId) => {
+            const taskRef = doc(getCollectionRef(TASKS_COLLECTION), taskId);
+            try {
+                await deleteDoc(taskRef);
+            } catch (error) {
+                displayError("Failed to delete task: " + error.message);
+            }
+        };
+
+        const saveDailyScore = async (scoreData, todayTasks) => {
+            const scoresRef = getCollectionRef(SCORES_COLLECTION);
+            const tasksRef = getCollectionRef(TASKS_COLLECTION);
+            if (!scoresRef || !tasksRef) return displayError("App not ready to save score.");
+
+            try {
+                await addDoc(scoresRef, scoreData);
+                const batch = writeBatch(db);
+                todayTasks.forEach(task => {
+                    const taskRef = doc(tasksRef, task.id);
+                    if (task.progress === '1') {
+                        batch.update(taskRef, { status: 'completed', onTodayCard: false });
+                    } else {
+                        batch.update(taskRef, { onTodayCard: false, progress: 'none' });
+                    }
+                });
+                await batch.commit();
+            } catch (error) {
+                displayError("Failed to save score and clear card: " + error.message);
+            }
+        };
+
+        const clearCompletedTasks = async (completedTasks) => {
+            const tasksRef = getCollectionRef(TASKS_COLLECTION);
+            if(!tasksRef) return displayError("App not ready to clear tasks.");
+
+            const batch = writeBatch(db);
+            completedTasks.forEach(task => {
+                batch.delete(doc(tasksRef, task.id));
+            });
+            try { await batch.commit(); }
+            catch (error) { displayError("Failed to clear completed tasks: " + error.message); }
+        };
+
+        const calculatePoints = (todayTasks) => {
+            let possiblePoints = 0;
+            let actualPoints = 0;
+            const sortedTasks = [...todayTasks].sort((a, b) => getSafeTime(b) - getSafeTime(a));
+
+            sortedTasks.forEach((task, index) => {
+                const pointValue = sortedTasks.length - index;
+                possiblePoints += pointValue;
+                if (task.progress === '1') {
+                    actualPoints += pointValue;
+                } else if (task.progress === '1/2') {
+                    actualPoints += pointValue / 2;
+                }
+            });
+            return { possiblePoints, actualPoints };
+        };
+
+        const enableEditing = (textSpan, item, type) => {
+            const originalText = textSpan.textContent;
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = originalText;
+            input.className = 'w-full bg-yellow-100 rounded p-1';
+
+            textSpan.replaceWith(input);
+            input.focus();
+            input.select();
+
+            const saveChanges = async () => {
+                const newText = input.value.trim();
+                if (newText && newText !== originalText) {
+                    if (type === 'goal') {
+                        await updateGoalText(item.id, newText);
+                    } else if (type === 'project') {
+                        await updateProjectText(item.id, newText);
+                    }
+                } else {
+                    input.replaceWith(textSpan); // Revert if no change
+                }
+            };
+
+            input.addEventListener('blur', saveChanges);
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    input.blur();
+                } else if (e.key === 'Escape') {
+                    input.replaceWith(textSpan);
+                }
+            });
+        };
+
+        const openNotesEditor = (itemId, itemType) => {
+            const modal = document.getElementById('notes-modal');
+            const titleEl = document.getElementById('notes-modal-title');
+            const textarea = document.getElementById('notes-modal-textarea');
+            const saveBtn = document.getElementById('notes-modal-save-btn');
+            const cancelBtn = document.getElementById('notes-modal-cancel-btn');
+
+            let item;
+            let collectionName;
+            let typeName;
+
+            if (itemType === 'goal') {
+                item = allGoals.find(g => g.id === itemId);
+                collectionName = GOALS_COLLECTION;
+                typeName = "Goal";
+            } else if (itemType === 'project') {
+                item = allProjects.find(p => p.id === itemId);
+                collectionName = PROJECTS_COLLECTION;
+                typeName = "Project";
+            } else { // 'task'
+                item = allTasks.find(t => t.id === itemId);
+                collectionName = TASKS_COLLECTION;
+                typeName = "Task";
+            }
+
+            if (!item) {
+                displayError("Could not find the selected item.");
+                return;
+            }
+
+            titleEl.textContent = `Notes for ${typeName}: ${item.text}`;
+            textarea.value = item.notes || '';
+
+            const cleanup = () => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+                saveBtn.onclick = null;
+                cancelBtn.onclick = null;
+            };
+
+            const handleSave = async () => {
+                const newNotes = textarea.value.trim();
+                saveBtn.disabled = true;
+                saveBtn.textContent = 'Saving...';
+                try {
+                    const docRef = doc(getCollectionRef(collectionName), itemId);
+                    await updateDoc(docRef, { notes: newNotes });
+                } catch (error) {
+                    displayError("Failed to save notes: " + error.message);
+                } finally {
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = 'Save Notes';
+                    cleanup();
+                }
+            };
+            
+            saveBtn.onclick = handleSave;
+            cancelBtn.onclick = cleanup;
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            textarea.focus();
+        };
+        
+        const startRealtimeListeners = () => {
+            const settingsRef = doc(db, `artifacts/${appId}/users/${userId}/${SETTINGS_COLLECTION}/userPreferences`);
+            onSnapshot(settingsRef, (doc) => {
+                if (doc.exists()) {
+                    userSettings = { ...userSettings, ...doc.data() };
+                }
+                hasLoadedSettings = true;
+                renderApp();
+            });
+            onSnapshot(query(getCollectionRef(TASKS_COLLECTION)), (snapshot) => {
+                allTasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                hasLoadedTasks = true;
+                renderApp();
+            });
+            onSnapshot(query(getCollectionRef(SCORES_COLLECTION)), (snapshot) => {
+                allScores = snapshot.docs.map(doc => doc.data());
+                hasLoadedScores = true;
+                renderApp();
+            });
+            onSnapshot(query(getCollectionRef(GOALS_COLLECTION)), (snapshot) => {
+                allGoals = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                hasLoadedGoals = true;
+                renderApp();
+            });
+            onSnapshot(query(getCollectionRef(PROJECTS_COLLECTION)), (snapshot) => {
+                allProjects = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                hasLoadedProjects = true;
+                renderApp();
+            });
+        };
+
+        const setupAutocomplete = (input, container, dataProvider, onSelect, trigger) => {
+            let dropdown;
+            
+            const removeDropdown = () => {
+                if (dropdown) {
+                    dropdown.remove();
+                    dropdown = null;
+                }
+            };
+            
+            input.addEventListener('input', () => {
+                const value = input.value;
+                const triggerIndex = value.lastIndexOf(trigger);
+
+                if (triggerIndex === -1) {
+                    removeDropdown();
+                    return;
+                }
+                
+                removeDropdown();
+
+                const query = value.substring(triggerIndex + trigger.length);
+                const data = dataProvider().filter(item => 
+                    item.text.toLowerCase().includes(query.toLowerCase()) || 
+                    (item.fullProjectId || item.fullGoalId).toLowerCase().includes(query.toLowerCase())
+                );
+
+                if (data.length > 0) {
+                    dropdown = document.createElement('div');
+                    dropdown.className = 'autocomplete-dropdown';
+                    
+                    data.forEach(item => {
+                        const itemDiv = document.createElement('div');
+                        itemDiv.className = 'autocomplete-item';
+                        const idText = item.fullProjectId || item.fullGoalId;
+                        const typeText = item.type === 'project' ? 'Project' : 'Goal';
+                        const typeColor = item.type === 'project' ? 'text-blue-500' : 'text-red-500';
+
+                        itemDiv.innerHTML = `
+                            <div class="flex justify-between items-center">
+                                <span>
+                                    <strong>${idText}</strong>: ${item.text.replace(new RegExp(query, 'gi'), (match) => `<strong>${match}</strong>`)}
+                                </span>
+                                <span class="text-xs font-semibold ${typeColor} ml-2">${typeText}</span>
+                            </div>
+                        `;
+                        itemDiv.addEventListener('mousedown', (e) => {
+                            e.preventDefault();
+                            onSelect(item, trigger);
+                            removeDropdown();
+                        });
+                        dropdown.appendChild(itemDiv);
+                    });
+
+                    container.appendChild(dropdown);
+                }
+            });
+
+            input.addEventListener('blur', () => setTimeout(removeDropdown, 150));
+        };
+
+
+        // --- Drag and Drop Logic ---
+        const handleDragStart = (e) => {
+            draggedTaskId = e.currentTarget.getAttribute('data-id');
+            e.dataTransfer.setData('text/plain', draggedTaskId);
+            e.currentTarget.classList.add('opacity-40');
+        };
+
+        const handleDragEnd = (e) => {
+            e.currentTarget.classList.remove('opacity-40');
+            draggedTaskId = null;
+            document.querySelectorAll('.drop-target-after').forEach(el => el.classList.remove('drop-target-after'));
+        };
+
+        const handleContainerDragOver = (e) => {
+            e.preventDefault();
+            const listContainer = e.currentTarget;
+            if(listContainer.id !== "completed-list") {
+                e.dataTransfer.dropEffect = 'move';
+                listContainer.classList.add('bg-violet-100');
             } else {
-                textSpan.innerHTML = item.text.replace(/(#G\d+)/g, '<strong class="text-red-600 font-semibold">$1</strong>');
+                 e.dataTransfer.dropEffect = 'none';
+            }
+        };
+
+        const handleContainerDragLeave = (e) => {
+            e.currentTarget.classList.remove('bg-violet-100');
+        };
+        
+        const handleLocationChangeDrop = (e) => {
+            e.preventDefault();
+            e.currentTarget.classList.remove('bg-violet-100');
+            const targetIdentifier = e.currentTarget.dataset.target;
+            const draggedId = e.dataTransfer.getData('text/plain');
+            if (draggedId) {
+                handleDragDropCommit(draggedId, targetIdentifier);
+            }
+        };
+
+        const handleTodayDragOver = (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            
+            const currentItem = e.currentTarget;
+            const listContainer = currentItem.closest('.task-list');
+            
+            listContainer.querySelectorAll('.task-item').forEach(item => {
+                item.classList.remove('drop-target-after');
+            });
+            const draggedId = e.dataTransfer.getData('text/plain');
+            if (currentItem.getAttribute('data-id') === draggedId) return;
+            
+            const rect = currentItem.getBoundingClientRect();
+            const isAfter = (e.clientY - rect.top) > (rect.height / 2);
+
+            if (isAfter) {
+                currentItem.classList.add('drop-target-after');
+            }
+        };
+        
+        const handleS3DragOver = (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            
+            const currentItem = e.currentTarget;
+            const listContainer = currentItem.closest('.task-list');
+            
+            listContainer.querySelectorAll('.task-item').forEach(item => {
+                item.classList.remove('drop-target-after');
+            });
+
+            const draggedId = e.dataTransfer.getData('text/plain');
+            if (currentItem.getAttribute('data-id') === draggedId) return;
+            
+            const rect = currentItem.getBoundingClientRect();
+            const isAfter = (e.clientY - rect.top) > (rect.height / 2);
+
+            if (isAfter) {
+                currentItem.classList.add('drop-target-after');
+            }
+        };
+
+        const handleTodayDrop = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const droppedOnItem = e.currentTarget;
+             droppedOnItem.classList.remove('drop-target-after');
+            const draggedId = e.dataTransfer.getData('text/plain');
+            if (!draggedId || draggedId === droppedOnItem.getAttribute('data-id')) return;
+
+            const todayTasks = allTasks.filter(t => t.onTodayCard).sort((a, b) => getSafeTime(b) - getSafeTime(a));
+            let targetIndex = todayTasks.findIndex(t => t.id === droppedOnItem.getAttribute('data-id'));
+
+            const rect = droppedOnItem.getBoundingClientRect();
+            const isAfter = (e.clientY - rect.top) > (rect.height / 2);
+            if (isAfter) targetIndex += 1;
+
+            reorderTaskTimestamps(draggedId, targetIndex);
+        };
+        
+        const handleS3Drop = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const droppedOnItem = e.currentTarget;
+            const listContainer = droppedOnItem.closest('.task-list');
+            
+            listContainer.querySelectorAll('.task-item').forEach(item => item.classList.remove('drop-target-after'));
+            
+            const draggedId = e.dataTransfer.getData('text/plain');
+            if (!draggedId) return;
+            
+            const draggedTask = allTasks.find(t => t.id === draggedId);
+            const droppedOnTask = allTasks.find(t => t.id === droppedOnItem.getAttribute('data-id'));
+
+            if (!draggedTask || !droppedOnTask || draggedTask.id === droppedOnTask.id) return;
+
+            if (draggedTask.status === droppedOnTask.status) {
+                const s3Tasks = allTasks.filter(t => t.status === draggedTask.status).sort((a, b) => getSafeTime(b) - getSafeTime(a));
+                let targetIndex = s3Tasks.findIndex(t => t.id === droppedOnTask.id);
+                
+                const rect = droppedOnItem.getBoundingClientRect();
+                const isAfter = (e.clientY - rect.top) > (rect.height / 2);
+                if (isAfter) targetIndex += 1;
+
+                reorderS3Tasks(draggedId, targetIndex, draggedTask.status);
+            } else {
+                const targetIdentifier = droppedOnTask.status;
+                handleDragDropCommit(draggedId, targetIdentifier);
+            }
+        };
+
+        const setupDragAndDrop = () => {
+            document.querySelectorAll('.task-item[draggable="true"]').forEach(item => {
+                item.removeEventListener('dragstart', handleDragStart);
+                item.removeEventListener('dragend', handleDragEnd);
+                item.removeEventListener('dragover', handleTodayDragOver);
+                item.removeEventListener('drop', handleTodayDrop);
+                item.removeEventListener('dragover', handleS3DragOver);
+                item.removeEventListener('drop', handleS3Drop);
+                
+                item.addEventListener('dragstart', handleDragStart);
+                item.addEventListener('dragend', handleDragEnd);
+
+                const parentList = item.closest('.task-list');
+                if (!parentList) return;
+
+                if (parentList.id === 'today-list') {
+                    item.addEventListener('dragover', handleTodayDragOver);
+                    item.addEventListener('drop', handleTodayDrop);
+                } else if (parentList.dataset.target?.startsWith('s3-')) {
+                    item.addEventListener('dragover', handleS3DragOver);
+                    item.addEventListener('drop', handleS3Drop);
+                }
+            });
+
+            const locationChangeDropZones = [todayDropZone, ...s3Lists];
+            locationChangeDropZones.forEach(zone => {
+                zone.removeEventListener('dragover', handleContainerDragOver);
+                zone.removeEventListener('dragleave', handleContainerDragLeave);
+                zone.removeEventListener('drop', handleLocationChangeDrop);
+                zone.addEventListener('dragover', handleContainerDragOver);
+                zone.addEventListener('dragleave', handleContainerDragLeave);
+                zone.addEventListener('drop', handleLocationChangeDrop);
+            });
+        };
+        
+        // --- ROBUST ELEMENT CREATION FUNCTIONS ---
+
+        const createItemElement = (item, type, relatedData, index = -1, totalActive = 0) => {
+            const isGoal = type === 'goal';
+            const { projects, tasks } = relatedData;
+            
+            const div = document.createElement('div');
+            div.className = `${isGoal ? 'goal-item' : 'project-item'} p-3 rounded-lg flex items-start gap-3 transition duration-150`;
+            div.setAttribute(`data-id`, item.id);
+            
+            const isActive = item.status === 'active' || !item.status;
+
+            if (isActive) {
+                div.classList.add('bg-white', 'hover:bg-gray-50');
+                if (isGoal) div.setAttribute('draggable', true);
+            } else {
+                div.classList.add('bg-gray-100', 'opacity-60');
             }
 
-            const controls = document.createElement('div');
-            controls.className = 'flex items-center space-x-1';
-            
-            if (item.status === 'active') {
-                const completeBtn = document.createElement('button');
-                completeBtn.innerHTML = `<span data-lucide="check-circle-2" class="w-4 h-4 text-gray-400 hover:text-green-500"></span>`;
-                completeBtn.onclick = () => type === 'goal' ? updateGoalStatus(item.id, 'completed') : updateProjectStatus(item.id, 'completed');
-                controls.appendChild(completeBtn);
+            // Point Column (for goals)
+            if (isGoal) {
+                const pointDiv = document.createElement('div');
+                pointDiv.className = 'point-column text-red-600 pr-2';
+                if (isActive && index !== -1) {
+                    pointDiv.textContent = totalActive - index;
+                }
+                div.appendChild(pointDiv);
             }
+
+            // Main Content
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'flex-grow';
+
+            const topRow = document.createElement('div');
+            topRow.className = 'flex items-center justify-between';
             
-            const deleteBtn = document.createElement('button');
-            deleteBtn.innerHTML = `<span data-lucide="trash-2" class="w-4 h-4 text-gray-400 hover:text-red-500"></span>`;
-            deleteBtn.onclick = () => type === 'goal' ? updateGoalStatus(item.id, 'deleted') : updateProjectStatus(item.id, 'deleted');
-            controls.appendChild(deleteBtn);
+            const textWrapper = document.createElement('div');
+            textWrapper.className = 'flex items-center min-w-0';
             
-            div.appendChild(textSpan);
-            div.appendChild(controls);
+            const textSpan = document.createElement('span');
+            textSpan.className = 'item-text-content font-medium text-gray-800';
+            if (!isActive) textSpan.classList.add('line-through');
+            textSpan.textContent = item.text;
+            textWrapper.appendChild(textSpan);
+
+            if (item.notes && item.notes.trim() !== '') {
+                const notesIcon = document.createElement('span');
+                notesIcon.setAttribute('data-lucide', 'message-square-text');
+                notesIcon.className = 'w-4 h-4 text-gray-400 ml-2 flex-shrink-0';
+                notesIcon.title = 'Has notes';
+                textWrapper.appendChild(notesIcon);
+            }
+            topRow.appendChild(textWrapper);
+
+            // Controls (Edit, Status)
+            const controlsDiv = document.createElement('div');
+            controlsDiv.className = 'flex items-center space-x-2 controls opacity-0 group-hover:opacity-100 transition-opacity';
+            
+            if (isActive) {
+                const editBtn = document.createElement('button');
+                editBtn.className = 'edit-btn p-1 rounded-full hover:bg-gray-200';
+                editBtn.title = 'Edit';
+                editBtn.innerHTML = '<span data-lucide="pencil" class="w-4 h-4 text-gray-500"></span>';
+                editBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    enableEditing(textSpan, item, type);
+                });
+                controlsDiv.appendChild(editBtn);
+            }
+
+            const statusBtn = document.createElement('button');
+            statusBtn.className = 'status-btn p-1 rounded-full hover:bg-gray-200';
+            statusBtn.title = isActive ? 'Complete' : 'Reactivate';
+            statusBtn.innerHTML = `<span data-lucide="${isActive ? 'check-circle' : 'history'}" class="w-4 h-4 ${isActive ? 'text-green-500' : 'text-amber-500'}"></span>`;
+            statusBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const newStatus = isActive ? 'completed' : 'active';
+                isGoal ? updateGoalStatus(item.id, newStatus) : updateProjectStatus(item.id, newStatus);
+            });
+            controlsDiv.appendChild(statusBtn);
+            topRow.appendChild(controlsDiv);
+            contentDiv.appendChild(topRow);
+
+            // Bottom Row (Details)
+            const bottomRow = document.createElement('div');
+            bottomRow.className = 'text-xs text-gray-500 mt-1 flex items-center';
+            const linkedItemCount = isGoal 
+                ? projects.filter(p => p.linkedGoalId === item.fullGoalId && (p.status === 'active' || !p.status)).length 
+                : tasks.filter(t => t.linkedProjectId === item.fullProjectId && t.status !== 'completed').length;
+            
+            let detailsHTML = `<span class="font-mono text-gray-400">${isGoal ? item.fullGoalId : item.fullProjectId}</span>`;
+            if (!isGoal && item.linkedGoalId) {
+                detailsHTML += `<span class="mx-2 text-gray-300">&rarr;</span><span class="font-mono text-red-500 bg-red-100 px-1 rounded">${item.linkedGoalId}</span>`;
+            }
+            detailsHTML += `<span class="mx-2 text-gray-300">&bull;</span>
+                            <span data-lucide="${isGoal ? 'briefcase' : 'list-checks'}" class="w-3 h-3 mr-1"></span>
+                            <span>${linkedItemCount} active ${isGoal ? 'projects' : 'tasks'}</span>`;
+            bottomRow.innerHTML = detailsHTML;
+            contentDiv.appendChild(bottomRow);
+
+            div.appendChild(contentDiv);
+
+            // Add main click listener for notes
+            div.addEventListener('click', (e) => {
+                if (!e.target.closest('button')) {
+                    openNotesEditor(item.id, type);
+                }
+            });
+
+            div.addEventListener('mouseenter', () => div.classList.add('group'));
+            div.addEventListener('mouseleave', () => div.classList.remove('group'));
+            
             return div;
         };
+        
+        const createTaskElement = (task, index = -1, todayCount = 0) => {
+            const div = document.createElement('div');
+            div.className = 'task-item flex items-center gap-3 bg-white p-3 rounded-lg shadow-sm';
+            div.setAttribute('data-id', task.id);
+            div.setAttribute('draggable', task.status !== 'completed');
 
-        const createTaskElement = (task, index = -1, todayCount = 0) => { /* ... almost unchanged, just remove tagSpan logic ... */ 
-            const isToday = task.onTodayCard === true; 
+            const isTodayTask = task.onTodayCard;
             const isCompleted = task.status === 'completed';
-            const isMit = isToday && index === 0;
-            const item = document.createElement('div');
-            item.className = 'task-item flex flex-col transition duration-150'; 
-            item.setAttribute('data-id', task.id);
-            item.setAttribute('draggable', !isCompleted);
-            if (isCompleted) item.classList.add('completed', 'border-green-300');
-            if (isToday) {
-                item.classList.add('shadow-none'); 
-                if (isMit) item.classList.add('mit');
-            } else {
-                item.classList.add('p-3', 'rounded-lg', 'border', 'border-gray-200', 'shadow-sm', 'bg-white', 'space-y-1');
+
+            if (isTodayTask && task.progress === '1') div.classList.add('line-through', 'opacity-50');
+            if (isTodayTask && task.progress === '1/2') div.classList.add('opacity-75');
+            if (isCompleted) div.classList.add('completed');
+            if (isTodayTask && index === 0) div.classList.add('mit');
+
+            // --- Multiplier Text Logic ---
+            let multiplierHTML = '';
+            // ... (rest of multiplier logic remains the same) ...
+             const allActiveGoals = allGoals.filter(g => g.status === 'active' || !g.status);
+            const allActiveProjects = allProjects.filter(p => p.status === 'active' || !p.status);
+            if (task.linkedProjectId) {
+                const project = allActiveProjects.find(p => p.fullProjectId === task.linkedProjectId);
+                if (project && project.linkedGoalId) {
+                    const goal = allActiveGoals.find(g => g.fullGoalId === project.linkedGoalId);
+                    if(goal) {
+                         const goalRank = allActiveGoals.sort((a,b) => getSafeTime(b) - getSafeTime(a)).findIndex(g => g.id === goal.id);
+                         const goalPoints = allActiveGoals.length - goalRank;
+                         multiplierHTML = `<span class="font-mono text-red-500 bg-red-100 px-1 rounded" title="Goal: ${goal.text}">${project.linkedGoalId}</span> <span class="text-gray-400">/</span> <span class="font-mono text-blue-500 bg-blue-100 px-1 rounded" title="Project: ${project.text}">${task.linkedProjectId}</span> <span class="font-bold text-red-600 ml-2" title="Goal Point Multiplier">x${goalPoints}</span>`;
+                    } else {
+                         multiplierHTML = `<span class="font-mono text-blue-500 bg-blue-100 px-1 rounded" title="Project: ${project.text}">${task.linkedProjectId}</span>`;
+                    }
+                } else if (project) {
+                    multiplierHTML = `<span class="font-mono text-blue-500 bg-blue-100 px-1 rounded" title="Project: ${project.text}">${task.linkedProjectId}</span>`;
+                }
+            } else if (task.linkedGoalId) {
+                 const goal = allActiveGoals.find(g => g.fullGoalId === task.linkedGoalId);
+                 if (goal) {
+                     const goalRank = allActiveGoals.sort((a,b) => getSafeTime(b) - getSafeTime(a)).findIndex(g => g.id === goal.id);
+                     const goalPoints = allActiveGoals.length - goalRank;
+                     multiplierHTML = `<span class="font-mono text-red-500 bg-red-100 px-1 rounded" title="Goal: ${goal.text}">${task.linkedGoalId}</span> <span class="font-bold text-red-600 ml-2" title="Goal Point Multiplier">x${goalPoints}</span>`;
+                 }
             }
-            const possible = isToday ? (todayCount - index) : 0; 
-            let earned = 0;
-            if (task.progress === 'full') earned = possible;
-            else if (task.progress === 'half') earned = possible / 2;
-            earned = parseFloat(earned.toFixed(1));
-            const contentRow = document.createElement('div');
-            contentRow.className = `flex w-full items-center`; 
-            const taskContentWrapper = document.createElement('div');
-            taskContentWrapper.className = `task-content-wrapper flex items-center justify-between flex-grow`;
-            const textContainer = document.createElement('div');
-            textContainer.className = 'flex items-center flex-shrink-0'; 
-            // The #G/#NG tagSpan is removed from here
-            const taskText = document.createElement('span');
-            taskText.className = `text-gray-800 break-words task-text-content`;
-            taskText.textContent = task.text;
-            if (isCompleted) taskText.classList.add('text-gray-500', 'line-through');
-            if (isToday) {
-                if (task.progress === 'full') taskText.classList.add('line-through', 'text-gray-500');
-                else if (task.progress === 'half') taskText.classList.add('opacity-75');
+            // --- End Multiplier Logic ---
+
+            if (isTodayTask) {
+                div.innerHTML = `
+                    <div class="task-content-wrapper">
+                        <div class="flex-grow min-w-0">
+                            <div class="flex items-center min-w-0">
+                                <span class="task-text-content truncate">${task.text}</span>
+                                ${(task.notes && task.notes.trim() !== '') ? '<span data-lucide="message-square-text" class="w-4 h-4 text-gray-400 ml-2 flex-shrink-0" title="Has notes"></span>' : ''}
+                            </div>
+                            ${multiplierHTML ? `<div class="text-xs -mt-2 text-gray-500">${multiplierHTML}</div>` : ''}
+                        </div>
+                        <div class="score-controls flex items-center gap-2">
+                            <button class="score-btn ${task.progress === '1' ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-600 hover:bg-green-200'}" data-score="1">1</button>
+                            <button class="score-btn ${task.progress === '1/2' ? 'bg-yellow-500 text-white' : 'bg-gray-200 text-gray-600 hover:bg-yellow-200'}" data-score="1/2">1/2</button>
+                        </div>
+                    </div>
+                    <div class="point-column text-violet-600 pr-2">${todayCount - index}</div>
+                    <div class="point-column text-green-600">${task.progress === '1' ? (todayCount - index) : task.progress === '1/2' ? ((todayCount - index) / 2).toFixed(1) : '0'}</div>
+                `;
+                 div.querySelectorAll('.score-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const newProgress = task.progress === e.target.dataset.score ? 'none' : e.target.dataset.score;
+                        updateTaskProgress(task.id, newProgress);
+                    });
+                });
+            } else { // S3 or Completed Task
+                div.innerHTML = `
+                    <div class="flex-grow min-w-0">
+                        <div class="flex items-center min-w-0">
+                            <span class="task-text-content truncate">${task.text}</span>
+                            ${(task.notes && task.notes.trim() !== '') ? '<span data-lucide="message-square-text" class="w-4 h-4 text-gray-400 ml-2 flex-shrink-0" title="Has notes"></span>' : ''}
+                        </div>
+                        ${multiplierHTML ? `<div class="text-xs mt-1">${multiplierHTML}</div>` : ''}
+                    </div>
+                    <div class="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        ${!isCompleted ? '<button class="delete-btn p-1 rounded-full hover:bg-red-100" title="Delete Task"><span data-lucide="x" class="w-4 h-4 text-red-500"></span></button>' : ''}
+                    </div>
+                `;
+                if (!isCompleted) {
+                    div.querySelector('.delete-btn').addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        const result = await showModal('Delete Task?', `Are you sure you want to permanently delete this task?`);
+                        if (result.confirmed) deleteTask(task.id);
+                    });
+                }
             }
-            if (isMit && isToday) {
-                const mitLabel = document.createElement('span');
-                mitLabel.textContent = "MIT: ";
-                mitLabel.className = "text-sm text-red-600 font-semibold mr-1 flex-shrink-0";
-                textContainer.prepend(mitLabel);
-            }
-            textContainer.appendChild(taskText);
-            const controlsGroup = document.createElement('div');
-            controlsGroup.className = 'flex items-center flex-shrink-0 space-x-2';
-            const deleteBtn = document.createElement('button');
-            deleteBtn.className = `w-5 h-5 flex-shrink-0 text-gray-400 hover:text-red-500 transition duration-150 ${isToday ? 'delete-btn' : ''}`;
-            deleteBtn.innerHTML = `<span data-lucide="x" class="w-4 h-4 m-auto block"></span>`;
-            deleteBtn.title = 'Delete Task';
-            deleteBtn.onclick = async (e) => {
-                e.stopPropagation();
-                 const isConfirmed = await showModal('Delete Task?', `Delete: "${task.text}"?`, 'Delete', 'bg-red-600 hover:bg-red-700');
-                 if (isConfirmed) deleteTask(task.id);
-            };
-            controlsGroup.appendChild(deleteBtn);
-            if (isToday) { /* ... scoring controls unchanged ... */ }
-            taskContentWrapper.appendChild(textContainer);
-            taskContentWrapper.appendChild(controlsGroup);
-            if (isToday) {
-                const ppColumn = document.createElement('div');
-                ppColumn.className = `point-column text-violet-600`;
-                ppColumn.textContent = possible;
-                const peColumn = document.createElement('div');
-                peColumn.className = `point-column ${earned > 0 ? 'text-green-600' : 'text-gray-400'}`;
-                peColumn.textContent = earned;
-                contentRow.appendChild(taskContentWrapper);
-                contentRow.appendChild(ppColumn);
-                contentRow.appendChild(peColumn);
-            } else {
-                 contentRow.appendChild(taskContentWrapper);
-                 contentRow.classList.remove('flex');
-                 contentRow.classList.add('w-full', 'justify-between');
-            }
-            item.appendChild(contentRow);
-            lucide.createIcons();
-            return item;
+
+            div.addEventListener('click', (e) => {
+                if (!e.target.closest('button')) {
+                    openNotesEditor(task.id, 'task');
+                }
+            });
+
+            div.addEventListener('mouseenter', () => div.classList.add('group'));
+            div.addEventListener('mouseleave', () => div.classList.remove('group'));
+            
+            return div;
         };
         
-        const renderAll = () => {
+        const renderApp = () => {
+            if (!isAuthReady) return; 
+
+            if (!initialLoadComplete && hasLoadedTasks && hasLoadedScores && hasLoadedGoals && hasLoadedProjects && hasLoadedSettings) {
+                initialLoadComplete = true; 
+                loadingOverlay.classList.add('hidden'); 
+                appContainer.classList.remove('hidden'); 
+            }
+            
+            if (!initialLoadComplete) return;
+
             renderGoals(allGoals, allProjects);
-            renderProjects(allProjects);
+            renderProjects(allProjects, allTasks);
             renderTasks(allTasks);
-            renderScores(allScores.map(s => ({data: () => s}))); // Adapt for function call
+            renderScores(allScores);
+            lucide.createIcons();
+            setupDragAndDrop();
+            setupGoalDragAndDrop();
         };
 
         const renderGoals = (goals, projects) => {
             const list = document.getElementById('goals-list');
             list.innerHTML = '';
-            goals.filter(g => g.status !== 'deleted').sort((a,b) => a.goalId - b.goalId).forEach(goal => {
-                list.appendChild(createItemElement(goal, 'goal', projects));
+            
+            const activeGoals = goals.filter(g => g.status === 'active' || !g.status).sort((a, b) => getSafeTime(b) - getSafeTime(a));
+            const completedGoals = goals.filter(g => g.status === 'completed').sort((a, b) => getSafeTime(b) - getSafeTime(a));
+            const totalActive = activeGoals.length;
+            
+            if(activeGoals.length === 0 && completedGoals.length === 0) {
+                 list.innerHTML = '<p class="text-gray-500 italic text-center text-sm p-2">Define your mission.</p>';
+                 return;
+            }
+
+            activeGoals.forEach((goal, index) => {
+                list.appendChild(createItemElement(goal, 'goal', { projects }, index, totalActive));
             });
-            lucide.createIcons();
+            if (completedGoals.length > 0) {
+                if(activeGoals.length > 0) {
+                    const divider = document.createElement('hr');
+                    divider.className = 'my-2';
+                    list.appendChild(divider);
+                }
+                completedGoals.forEach(goal => {
+                    list.appendChild(createItemElement(goal, 'goal', { projects }, -1, 0));
+                });
+            }
         };
 
-        const renderProjects = (projects) => {
+        const renderProjects = (projects, tasks) => {
             const list = document.getElementById('projects-list');
             list.innerHTML = '';
-            projects.filter(p => p.status !== 'deleted').sort((a,b) => b.createdAt.toDate() - a.createdAt.toDate()).forEach(project => {
-                list.appendChild(createItemElement(project, 'project'));
-            });
-            lucide.createIcons();
-        };
+            const activeProjects = projects.filter(p => p.status === 'active' || !p.status).sort((a, b) => getSafeTime(b) - getSafeTime(a));
+            const completedProjects = projects.filter(p => p.status === 'completed').sort((a, b) => getSafeTime(b) - getSafeTime(a));
 
-        const renderTasks = (tasks) => { /* ... almost unchanged, just remove projectTag logic ... */ };
-        const renderScores = (scores) => { /* ... unchanged ... */ };
-        
-        const startRealtimeListeners = () => {
-            const commonQuery = (ref) => query(ref, orderBy('createdAt', 'desc'));
-            
-            onSnapshot(commonQuery(getCollectionRef(TASKS_COLLECTION)), (snapshot) => {
-                allTasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                renderAll();
-            });
-            onSnapshot(commonQuery(getCollectionRef(SCORES_COLLECTION)), (snapshot) => {
-                allScores = snapshot.docs.map(doc => doc.data());
-                renderAll();
-            });
-            onSnapshot(commonQuery(getCollectionRef(GOALS_COLLECTION)), (snapshot) => {
-                allGoals = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                renderAll();
-            });
-            onSnapshot(commonQuery(getCollectionRef(PROJECTS_COLLECTION)), (snapshot) => {
-                allProjects = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                renderAll();
-            });
-        };
-
-        const setupAutocomplete = (input, container, dataProvider, onSelect) => {
-            let dropdown;
-            const showDropdown = () => {
-                if (!dropdown) {
-                    dropdown = document.createElement('div');
-                    dropdown.className = 'autocomplete-dropdown hidden';
-                    container.appendChild(dropdown);
+            if(activeProjects.length === 0 && completedProjects.length === 0) {
+                 list.innerHTML = '<p class="text-gray-500 italic text-center text-sm p-2">Break goals down into actionable projects.</p>';
+                 return;
+            }
+            activeProjects.forEach(project => list.appendChild(createItemElement(project, 'project', { tasks })));
+             if (completedProjects.length > 0) {
+                if(activeProjects.length > 0) {
+                     const divider = document.createElement('hr');
+                     divider.className = 'my-2';
+                     list.appendChild(divider);
                 }
-                dropdown.classList.remove('hidden');
-                updateDropdown();
-            };
-            const hideDropdown = () => dropdown?.classList.add('hidden');
-            const updateDropdown = () => {
-                if (!dropdown) return;
-                const value = input.value.toLowerCase();
-                const triggerIndex = value.lastIndexOf('#g');
-                if (triggerIndex === -1) { hideDropdown(); return; }
+                completedProjects.forEach(project => list.appendChild(createItemElement(project, 'project', { tasks })));
+            }
+        };
 
-                const query = value.substring(triggerIndex + 2);
-                const items = dataProvider().filter(g => g.status === 'active' && g.text.toLowerCase().includes(query));
-                
-                dropdown.innerHTML = '';
-                if (items.length > 0) {
-                    items.forEach(item => {
-                        const div = document.createElement('div');
-                        div.className = 'autocomplete-item';
-                        div.innerHTML = `<strong>${item.fullGoalId}</strong>: ${item.text}`;
-                        div.onmousedown = (e) => { // mousedown to fire before blur
-                            e.preventDefault();
-                            onSelect(item);
-                            hideDropdown();
-                        };
-                        dropdown.appendChild(div);
-                    });
+        const renderTasks = (tasks) => {
+            const todayTasks = tasks.filter(t => t.onTodayCard).sort((a, b) => getSafeTime(b) - getSafeTime(a));
+            const s3TomorrowTasks = tasks.filter(t => t.status === 's3-tomorrow' && !t.onTodayCard).sort((a, b) => getSafeTime(b) - getSafeTime(a));
+            const s3FewDaysTasks = tasks.filter(t => t.status === 's3-few-days' && !t.onTodayCard).sort((a, b) => getSafeTime(b) - getSafeTime(a));
+            const s3ThisWeekTasks = tasks.filter(t => t.status === 's3-this-week' && !t.onTodayCard).sort((a, b) => getSafeTime(b) - getSafeTime(a));
+            const s3LaterTasks = tasks.filter(t => t.status === 's3-later' && !t.onTodayCard).sort((a, b) => getSafeTime(b) - getSafeTime(a));
+            const completedTasks = tasks.filter(t => t.status === 'completed').sort((a, b) => getSafeTime(b) - getSafeTime(a));
+
+            const renderList = (listEl, taskArray, emptyMsg, isToday = false) => {
+                listEl.innerHTML = '';
+                if (taskArray.length === 0) {
+                    listEl.innerHTML = `<p class="text-gray-500 italic text-center text-sm p-2">${emptyMsg}</p>`;
                 } else {
-                    dropdown.innerHTML = `<div class="autocomplete-item text-gray-500">No matching goals</div>`;
+                    taskArray.forEach((task, index) => listEl.appendChild(createTaskElement(task, index, taskArray.length)));
                 }
             };
-
-            input.addEventListener('focus', showDropdown);
-            input.addEventListener('input', showDropdown);
-            input.addEventListener('blur', () => setTimeout(hideDropdown, 150)); // Delay to allow click
+            
+            renderList(todayList, todayTasks, 'Drag tasks here from S3. Max 5 recommended.', true);
+            renderList(document.getElementById('s3-tomorrow-list'), s3TomorrowTasks, 'All clear for now!');
+            renderList(document.getElementById('s3-few-days-list'), s3FewDaysTasks, 'Nothing scheduled yet.');
+            renderList(document.getElementById('s3-this-week-list'), s3ThisWeekTasks, 'Plan your week!');
+            renderList(document.getElementById('s3-later-list'), s3LaterTasks, 'Future is wide open.');
+            renderList(completedList, completedTasks, "You haven't crushed any tasks yet!");
+            
+            clearCompletedBtn.disabled = completedTasks.length === 0;
+            dailyReviewBtn.disabled = todayTasks.length === 0;
+            const { possiblePoints, actualPoints } = calculatePoints(todayTasks);
+            possiblePointsSpan.textContent = possiblePoints;
+            actualPointsSpan.textContent = actualPoints.toFixed(1).replace('.0', '');
         };
 
-        // --- Drag and Drop Logic (unchanged) ---
-        const handleDragStart=(e)=>{draggedTaskId=e.currentTarget.getAttribute("data-id"),e.currentTarget.classList.add("opacity-40"),e.dataTransfer.setData("text/plain",draggedTaskId)},handleDragEnd=(e)=>{e.currentTarget.classList.remove("opacity-40"),todayList.querySelectorAll(".task-item").forEach(e=>{e.classList.remove("drop-target-after")}),draggedTaskId=null},handleContainerDragOver=(e)=>{e.preventDefault(),e.dataTransfer.dropEffect="move",e.currentTarget.classList.add("border-4","border-dashed","border-violet-400")},handleContainerDragLeave=(e)=>{e.currentTarget.classList.remove("border-4","border-dashed","border-violet-400")},handleLocationChangeDrop=(e)=>{e.preventDefault();const t=e.currentTarget;if(t.classList.remove("border-4","border-dashed","border-violet-400"),draggedTaskId){const e=t.getAttribute("data-target");"completed"!==e&&handleDragDropCommit(draggedTaskId,e)}},handleTodayDragOver=(e)=>{e.preventDefault(),e.dataTransfer.dropEffect="move",todayList.querySelectorAll(".task-item").forEach(e=>{e.classList.remove("drop-target-after")});const t=e.dataTransfer.getData("text/plain"),a=e.currentTarget;if(allTasks.find(e=>e.id===t)&&!allTasks.find(e=>e.id===t).onTodayCard)return;if(a.getAttribute("data-id")===t)return;const d=a.getBoundingClientRect();(e.clientY-d.top)>d.height/2&&a.classList.add("drop-target-after")},handleS3DragOver=(e)=>{e.preventDefault(),e.dataTransfer.dropEffect="move";const t=e.currentTarget,a=t.closest(".task-list");a.querySelectorAll(".task-item").forEach(e=>{e.classList.remove("drop-target-after")});const d=e.dataTransfer.getData("text/plain");if(t.getAttribute("data-id")===d)return;const r=t.getBoundingClientRect();(e.clientY-r.top)>r.height/2&&t.classList.add("drop-target-after")},handleTodayDrop=(e)=>{e.preventDefault(),todayList.querySelectorAll(".task-item").forEach(e=>{e.classList.remove("drop-target-after")});const t=e.currentTarget,a=e.dataTransfer.getData("text/plain");if(a){const d=allTasks.find(e=>e.id===a);if(d&&!d.onTodayCard)return void handleDragDropCommit(a,"today");const r=t.getAttribute("data-id");if(a!==r){const l=allTasks.filter(e=>e.onTodayCard).sort((e,t)=>e.createdAt.toDate()-t.createdAt.toDate()).slice(0,TODAY_TASK_LIMIT);let o=l.findIndex(e=>e.id===r);const s=t.getBoundingClientRect();(e.clientY-s.top)>s.height/2&&(o+=1);const n=l.findIndex(e=>e.id===a);-1!==n&&(n===o||n+1===o)||reorderTaskTimestamps(a,o)}}},handleS3Drop=(e)=>{e.preventDefault(),e.stopPropagation();const t=e.currentTarget,a=t.closest(".task-list");a.querySelectorAll(".task-item").forEach(e=>{e.classList.remove("drop-target-after")});const d=e.dataTransfer.getData("text/plain");if(d){const r=allTasks.find(e=>e.id===d),l=allTasks.find(e=>e.id===t.getAttribute("data-id"));if(r&&l&&r.id!==l.id)if(r.status===l.status){const o=allTasks.filter(e=>e.status===r.status).sort((e,t)=>t.createdAt.toDate()-e.createdAt.toDate());let s=o.findIndex(e=>e.id===l.id);const n=t.getBoundingClientRect();(e.clientY-n.top)>n.height/2&&(s+=1),reorderS3Tasks(d,s,r.status)}else{const e=l.status;handleDragDropCommit(d,e)}}};const setupDragAndDrop=()=>{document.querySelectorAll('.task-item[draggable="true"]').forEach(e=>{e.removeEventListener("dragstart",handleDragStart),e.removeEventListener("dragend",handleDragEnd),e.removeEventListener("dragover",handleTodayDragOver),e.removeEventListener("drop",handleTodayDrop),e.removeEventListener("dragover",handleS3DragOver),e.removeEventListener("drop",handleS3Drop),e.addEventListener("dragstart",handleDragStart),e.addEventListener("dragend",handleDragEnd);const t=e.closest(".task-list");t&&("today-list"===t.id?(e.addEventListener("dragover",handleTodayDragOver),e.addEventListener("drop",handleTodayDrop)):t.dataset.target?.startsWith("s3-")&&(e.addEventListener("dragover",handleS3DragOver),e.addEventListener("drop",handleS3Drop)))});const e=[todayDropZone,...s3Lists,completedList];e.forEach(e=>{e&&(e.removeEventListener("dragover",handleContainerDragOver),e.removeEventListener("dragleave",handleContainerDragLeave),e.removeEventListener("drop",handleLocationChangeDrop),e.addEventListener("dragover",handleContainerDragOver),e.addEventListener("dragleave",handleContainerDragLeave),e.addEventListener("drop",handleLocationChangeDrop))})};
+        const renderScores = (scores) => {
+            if (scores.length === 0) {
+                lifetimeScoreSpan.textContent = "0.000";
+                weeklyScoreSpan.textContent = "0.000";
+                renderScoreChart([]);
+                return;
+            }
 
-        // --- Event Listeners ---
-        const handleAddTask = () => { const text = document.getElementById('new-task-input').value.trim(); if (text) addTask(text); };
-        const showDailyReviewModal = () => { /* ... unchanged ... */ };
+            const totalScore = scores.reduce((acc, s) => acc + s.score, 0);
+            lifetimeScoreSpan.textContent = (totalScore / scores.length).toFixed(3);
+
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setHours(0,0,0,0);
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+            
+            const weeklyScores = scores.filter(s => new Date(s.date) >= sevenDaysAgo);
+
+            if (weeklyScores.length > 0) {
+                const weeklyTotal = weeklyScores.reduce((acc, s) => acc + s.score, 0);
+                weeklyScoreSpan.textContent = (weeklyTotal / weeklyScores.length).toFixed(3);
+            } else {
+                weeklyScoreSpan.textContent = "0.000";
+            }
+            renderScoreChart(weeklyScores);
+        };
+
+        const renderScoreChart = (scores) => {
+            const ctx = document.getElementById('score-chart').getContext('2d');
+            
+            const labels = [];
+            const data = [];
+            const today = new Date();
+            today.setHours(0,0,0,0);
+
+            for (let i = 6; i >= 0; i--) {
+                const date = new Date(today);
+                date.setDate(date.getDate() - i);
+                const dateString = date.toISOString().slice(0, 10);
+                const dayLabel = date.toLocaleDateString('en-US', { weekday: 'short' });
+                labels.push(dayLabel);
+
+                const scoreForDay = scores.find(s => s.date === dateString);
+                data.push(scoreForDay ? scoreForDay.score * 1000 : 0);
+            }
+            
+            if (scoreChart) {
+                scoreChart.destroy();
+            }
+
+            scoreChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Daily Score',
+                        data: data,
+                        backgroundColor: 'rgba(167, 139, 250, 0.6)', // violet-400 with opacity
+                        borderColor: 'rgba(139, 92, 246, 1)', // violet-500
+                        borderWidth: 1,
+                        borderRadius: 4,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 1000,
+                            ticks: {
+                                stepSize: 250
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `Score: ${context.raw}`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+        };
+        
+        const setupGoalDragAndDrop = () => {
+            const goalList = document.getElementById('goals-list');
+            goalList.querySelectorAll('.goal-item[draggable="true"]').forEach(item => {
+                item.addEventListener('dragstart', handleGoalDragStart);
+                item.addEventListener('dragend', handleGoalDragEnd);
+                item.addEventListener('dragover', handleGoalDragOver);
+                item.addEventListener('drop', handleGoalDrop);
+            });
+        };
+
+        const handleGoalDragStart = (e) => {
+            draggedGoalId = e.currentTarget.getAttribute('data-id');
+            e.dataTransfer.setData('text/plain', draggedGoalId);
+            e.currentTarget.classList.add('opacity-40');
+        };
+        const handleGoalDragEnd = (e) => {
+            e.currentTarget.classList.remove('opacity-40');
+            draggedGoalId = null;
+            document.querySelectorAll('.drop-target-after').forEach(el => el.classList.remove('drop-target-after'));
+        };
+        const handleGoalDragOver = (e) => {
+            e.preventDefault();
+            const currentItem = e.currentTarget;
+            document.querySelectorAll('.goal-item').forEach(item => item.classList.remove('drop-target-after'));
+            if (currentItem.getAttribute('data-id') === draggedGoalId) return;
+            const rect = currentItem.getBoundingClientRect();
+            if ((e.clientY - rect.top) > (rect.height / 2)) {
+                currentItem.classList.add('drop-target-after');
+            }
+        };
+        const handleGoalDrop = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const droppedOnItem = e.currentTarget;
+            droppedOnItem.classList.remove('drop-target-after');
+            const draggedId = e.dataTransfer.getData('text/plain');
+            if (!draggedId || draggedId === droppedOnItem.getAttribute('data-id')) return;
+
+            const activeGoals = allGoals.filter(g => g.status === 'active' || !g.status).sort((a,b) => getSafeTime(b) - getSafeTime(a));
+            let targetIndex = activeGoals.findIndex(g => g.id === droppedOnItem.getAttribute('data-id'));
+            
+            const rect = droppedOnItem.getBoundingClientRect();
+            if ((e.clientY - rect.top) > (rect.height / 2)) {
+                targetIndex += 1;
+            }
+            reorderGoals(draggedId, targetIndex);
+        };
+
+        const showDailyReviewModal = () => {
+            const modal = document.getElementById('score-modal');
+            const todayTasks = allTasks.filter(t => t.onTodayCard);
+            const { possiblePoints, actualPoints } = calculatePoints(todayTasks);
+            const score = possiblePoints > 0 ? (actualPoints / possiblePoints) : 0;
+            
+            document.getElementById('modal-score').textContent = score.toFixed(3);
+            document.getElementById('modal-possible').textContent = possiblePoints;
+            document.getElementById('modal-actual').textContent = actualPoints.toFixed(1).replace('.0', '');
+            document.getElementById('reflection-input').value = '';
+
+            const cancelBtn = document.getElementById('modal-cancel-btn');
+            const submitBtn = document.getElementById('modal-submit-btn');
+
+            const cleanup = () => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+                submitBtn.removeEventListener('click', handleSubmit);
+                cancelBtn.removeEventListener('click', handleCancel);
+            };
+
+            const handleSubmit = () => {
+                const scoreData = {
+                    date: getTodayDateId(),
+                    possible: possiblePoints,
+                    actual: actualPoints,
+                    score: score,
+                    reflection: document.getElementById('reflection-input').value.trim(),
+                    userId
+                };
+                saveDailyScore(scoreData, todayTasks);
+                cleanup();
+            };
+
+            const handleCancel = () => cleanup();
+
+            submitBtn.addEventListener('click', handleSubmit);
+            cancelBtn.addEventListener('click', handleCancel);
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        };
 
         window.onload = () => {
-             document.getElementById('add-task-btn').addEventListener('click', handleAddTask);
-             document.getElementById('new-task-input').addEventListener('keypress', (e) => e.key === 'Enter' && handleAddTask());
              document.getElementById('daily-review-btn').addEventListener('click', showDailyReviewModal);
              
-             document.getElementById('add-goal-btn').addEventListener('click', () => {
-                 const input = document.getElementById('new-goal-input');
-                 if(input.value.trim()) addGoal(input.value.trim());
-             });
-             
-             document.getElementById('add-project-btn').addEventListener('click', () => {
-                 const input = document.getElementById('new-project-input');
-                 const text = input.value.trim();
-                 const linkedGoalId = input.dataset.linkedGoalId || '';
-                 if (text) addProject(text, linkedGoalId);
-             });
+            const goalInput = document.getElementById('new-goal-input');
+            const goalBtn = document.getElementById('add-goal-btn');
+            const projectInput = document.getElementById('new-project-input');
+            const projectBtn = document.getElementById('add-project-btn');
 
-             const projectInput = document.getElementById('new-project-input');
+            const handleGoalSubmit = async () => {
+                const text = goalInput.value.trim();
+                if (text) {
+                    const originalButtonText = goalBtn.textContent;
+                    goalInput.disabled = true;
+                    goalBtn.disabled = true;
+                    goalBtn.textContent = 'Adding...';
+                    try {
+                        await addGoal(text);
+                        goalInput.value = ''; // Clear only on success
+                    } catch (error) {
+                        console.error("Goal submission failed:", error);
+                    } finally {
+                        goalInput.disabled = false;
+                        goalBtn.disabled = false;
+                        goalBtn.textContent = originalButtonText;
+                        goalInput.focus();
+                    }
+                }
+            };
+
+            const handleProjectSubmit = async () => {
+                const text = projectInput.value.trim();
+                const linkedGoalId = projectInput.dataset.linkedGoalId || '';
+                if (text) {
+                    const originalButtonText = projectBtn.textContent;
+                    projectInput.disabled = true;
+                    projectBtn.disabled = true;
+                    projectBtn.textContent = 'Adding...';
+                    try {
+                        await addProject(text, linkedGoalId);
+                        projectInput.value = ''; // Clear only on success
+                        projectInput.dataset.linkedGoalId = '';
+                    } catch (error) {
+                        console.error("Project submission failed:", error);
+                    } finally {
+                        projectInput.disabled = false;
+                        projectBtn.disabled = false;
+                        projectBtn.textContent = originalButtonText;
+                        projectInput.focus();
+                    }
+                }
+            };
+
+            goalBtn.addEventListener('click', handleGoalSubmit);
+            goalInput.addEventListener('keydown', e => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleGoalSubmit();
+                }
+            });
+            projectBtn.addEventListener('click', handleProjectSubmit);
+            projectInput.addEventListener('keydown', e => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleProjectSubmit();
+                }
+            });
+
              const projectInputContainer = document.getElementById('project-input-container');
 
              setupAutocomplete(
                 projectInput,
                 projectInputContainer,
-                () => allGoals,
-                (selectedGoal) => {
+                () => allGoals.filter(g => g.status === 'active' || !g.status).map(g => ({...g, type: 'goal'})),
+                (selectedGoal, trigger) => {
                     const currentValue = projectInput.value;
-                    const triggerIndex = currentValue.lastIndexOf('#G');
-                    const textBefore = currentValue.substring(0, triggerIndex);
+                    const triggerIndex = currentValue.lastIndexOf(trigger);
+                    const textBefore = triggerIndex >= 0 ? currentValue.substring(0, triggerIndex) : currentValue;
                     projectInput.value = `${textBefore}${selectedGoal.fullGoalId} `;
                     projectInput.dataset.linkedGoalId = selectedGoal.fullGoalId;
                     projectInput.focus();
-                }
+                },
+                '#'
              );
+             
+            document.querySelectorAll('.s3-add-task-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const targetList = e.currentTarget.dataset.targetList;
+                    const form = document.getElementById(`add-form-${targetList}`);
+                    form.classList.toggle('hidden');
+                    if (!form.classList.contains('hidden')) {
+                        form.querySelector('input').focus();
+                    }
+                });
+            });
 
-             lucide.createIcons();
+            const handleS3Submit = async (input) => {
+                if (!input) return;
+                const text = input.value.trim();
+                const targetList = input.dataset.targetList;
+                const linkedProjectId = input.dataset.linkedProjectId || '';
+                const linkedGoalId = input.dataset.linkedGoalId || '';
+                const button = input.closest('.flex').querySelector('.s3-submit-task-btn');
+
+                if (text && targetList) {
+                    if (linkedGoalId && !linkedProjectId && userSettings.showTaskGoalWarning) {
+                        const result = await showModal('Link Task to Goal?', 'Best practice is to link tasks to projects, which are then linked to goals. Are you sure you want to link this task directly to a goal?', {
+                            confirmText: 'Yes, Link to Goal',
+                            confirmClass: 'bg-violet-600 hover:bg-violet-700',
+                            checkboxLabel: "Don't show this message again"
+                        });
+
+                        if (!result.confirmed) return; // User cancelled
+                        if (result.dontShowAgain) {
+                            await updateUserSettings({ showTaskGoalWarning: false });
+                        }
+                    }
+
+                    const originalButtonText = button ? button.textContent : '';
+                    input.disabled = true;
+                    if(button) {
+                        button.disabled = true;
+                        button.textContent = 'Adding...';
+                    }
+                    try {
+                        await addTask(text, targetList, linkedProjectId, linkedGoalId);
+                        input.value = ''; // Clear only on success
+                        input.dataset.linkedProjectId = '';
+                        input.dataset.linkedGoalId = '';
+                    } catch (error) {
+                        console.error("S3 submission failed:", error);
+                    } finally {
+                        input.disabled = false;
+                        if(button) {
+                            button.disabled = false;
+                            button.textContent = originalButtonText;
+                        }
+                        input.focus();
+                    }
+                }
+            };
+
+            document.querySelectorAll('.s3-submit-task-btn').forEach(button => {
+                button.addEventListener('click', () => {
+                    const targetList = button.dataset.targetList;
+                    const input = document.querySelector(`.s3-new-task-input[data-target-list="${targetList}"]`);
+                    handleS3Submit(input);
+                });
+            });
+
+            document.querySelectorAll('.s3-new-task-input').forEach(input => {
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault(); 
+                        handleS3Submit(e.currentTarget);
+                    }
+                });
+
+                // --- UNIFIED AUTOCOMPLETE FOR TASKS ---
+                setupAutocomplete(
+                    input,
+                    input.parentNode, 
+                    () => {
+                        const activeProjects = allProjects.filter(p => p.status === 'active' || !p.status).map(p => ({...p, type: 'project'}));
+                        const activeGoals = allGoals.filter(g => g.status === 'active' || !g.status).map(g => ({...g, type: 'goal'}));
+                        return [...activeProjects, ...activeGoals];
+                    },
+                    (selectedItem, trigger) => {
+                        const currentValue = input.value;
+                        const triggerIndex = currentValue.lastIndexOf(trigger);
+                        const textBefore = triggerIndex >= 0 ? currentValue.substring(0, triggerIndex) : currentValue;
+                        
+                        if (selectedItem.type === 'project') {
+                            input.value = `${textBefore}${selectedItem.fullProjectId} `;
+                            input.dataset.linkedProjectId = selectedItem.fullProjectId;
+                            input.dataset.linkedGoalId = '';
+                        } else if (selectedItem.type === 'goal') {
+                            input.value = `${textBefore}${selectedItem.fullGoalId} `;
+                            input.dataset.linkedGoalId = selectedItem.fullGoalId;
+                            input.dataset.linkedProjectId = '';
+                        }
+                        input.focus();
+                    },
+                    '#'
+                );
+            });
+            
+            document.getElementById('clear-completed-btn').addEventListener('click', async () => {
+                const completedTasks = allTasks.filter(t => t.status === 'completed');
+                if(completedTasks.length === 0) return;
+                const result = await showModal('Clear All Completed?', `This will permanently delete ${completedTasks.length} completed tasks. This cannot be undone.`);
+                if (result.confirmed) clearCompletedTasks(completedTasks);
+            });
+
              setupFirebase();
         }
     </script>
