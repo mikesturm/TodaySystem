@@ -4,7 +4,8 @@
   <meta charset="UTF-8">
   <title>TodaySystem - Supabase Edition</title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.42.4/+esm"></script>
+  <!-- Use the UMD build so window.supabase.createClient works -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.42.4/dist/umd/supabase.min.js"></script>
   <style>
     body { font-family: Arial, sans-serif; padding: 2em; background: #f5f5fa; }
     .hidden { display: none; }
@@ -75,7 +76,7 @@
     </div>
   </div>
 
-  <script type="module">
+  <script>
     // --- Supabase config ---
     const SUPABASE_URL = "https://uyoqwfwfiyiyzduorrof.supabase.co";
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV5b3F3ZndmaXlpeXpkdW9ycm9mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAyMjcxMDQsImV4cCI6MjA3NTgwMzEwNH0.qW8GdBtRZqpo_AOXpM6aZdVTTaS4glD4qkyT1IWBoug";
